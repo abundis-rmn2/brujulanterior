@@ -192,8 +192,24 @@ const DeepSeekChat = () => {
         </div>
         <div className="current-prompt">
           <strong>Prompt activo:</strong>
-          <div className="current-prompt-text">
-            {promptsState.current || <em>Ninguno</em>}
+          <div className="current-prompt-text" style={{ display: 'flex', alignItems: 'center', gap: '0.5em' }}>
+            {promptsState.current
+              ? (
+                  <>
+                    {promptsState.current.length > 100
+                      ? promptsState.current.slice(0, 100) + '…'
+                      : promptsState.current}
+                    <button
+                      className="btn"
+                      style={{ marginLeft: 8 }}
+                      title="Desactivar prompt activo"
+                      onClick={() => setPromptsState(prev => ({ ...prev, current: '' }))}
+                    >
+                      Desactivar
+                    </button>
+                  </>
+                )
+              : <em>Ninguno</em>}
           </div>
         </div>
         <div className="api-key-section">
@@ -211,7 +227,7 @@ const DeepSeekChat = () => {
       </aside>
       <main className="chat-area">
         <header className="chat-header">
-          <h1>DeepSeek Chat</h1>
+          <h1>Gracia Chat</h1>
           <button className="btn clear-btn" onClick={clearChat} disabled={isLoading}>
             Limpiar chat
           </button>
@@ -225,13 +241,13 @@ const DeepSeekChat = () => {
               key={idx}
               className={`chat-message ${msg.role === 'user' ? 'user' : 'assistant'}`}
             >
-              <span className="role">{msg.role === 'user' ? 'Tú:' : 'DeepSeek:'}</span>
+              <span className="role">{msg.role === 'user' ? 'Tú:' : 'Gracia:'}</span>
               <span className="content">{msg.content}</span>
             </div>
           ))}
           {isLoading && (
             <div className="chat-message assistant loading">
-              <span className="role">DeepSeek:</span>
+              <span className="role">Gracia:</span>
               <span className="content typing-indicator">
                 <span className="dot" />
                 <span className="dot" />
