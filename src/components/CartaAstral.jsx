@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 
 const API_URL = 'https://json.freeastrologyapi.com/western/natal-wheel-chart';
+const PLANETS_URL = 'https://json.freeastrologyapi.com/western/planets';
+const HOUSES_URL = 'https://json.freeastrologyapi.com/western/houses';
+const ASPECTS_URL = 'https://json.freeastrologyapi.com/western/aspects';
 const API_KEY = '3d1Yxfgy176rMzllZzSVK86bNhj54Uq160Kq412n'; // Tu API Key de FreeAstrologyAPI
 
 const defaultConfig = {
@@ -20,6 +23,28 @@ const defaultConfig = {
   orb_values: { Conjunction: 3, Opposition: 5, Square: 5, Trine: 5, Sextile: 5 }
 };
 
+const proxyUrls = [
+  'https://corsproxy.io/?',
+  'https://thingproxy.freeboard.io/fetch/',
+  'https://cors-anywhere.herokuapp.com/'
+];
+
+async function fetchWithFallback(url, options) {
+  for (let proxy of proxyUrls) {
+    try {
+      const res = await fetch(proxy + url, options);
+      if (res.status === 429) continue;
+      if (!res.ok) continue;
+      return await res.json();
+    } catch {
+      // Intenta el siguiente proxy
+    }
+  }
+  throw new Error('No se pudo acceder a la API (todos los proxies fallaron o están saturados).');
+}
+
+const PROFILE_KEY = 'cartaAstralProfile';
+
 const CartaAstral = () => {
   const [form, setForm] = useState({
     name: '',
@@ -31,13 +56,36 @@ const CartaAstral = () => {
   const [coords, setCoords] = useState(null);
   const [tz, setTz] = useState(-6);
   const [svgUrl, setSvgUrl] = useState('');
+  const [planets, setPlanets] = useState([]);
+  const [houses, setHouses] = useState([]);
+  const [aspects, setAspects] = useState([]);
   const [loading, setLoading] = useState(false);
   const [geoLoading, setGeoLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleChange = e => setForm({ ...form, [e.target.name]: e.target.value });
 
-  // 🌎 Geolocaliza usando Nominatim (OpenStreetMap)
+  // Guardar nombre en localStorage cuando cambia
+  React.useEffect(() => {
+    if (form.name && form.name.trim()) {
+      localStorage.setItem(PROFILE_KEY, JSON.stringify({ name: form.name }));
+    }
+  }, [form.name]);
+
+  // Cargar nombre de perfil al montar
+  React.useEffect(() => {
+    try {
+      const storedProfile = localStorage.getItem(PROFILE_KEY);
+      if (storedProfile) {
+        const profile = JSON.parse(storedProfile);
+        if (profile.name) {
+          setForm(f => ({ ...f, name: profile.name }));
+        }
+      }
+    } catch {}
+  }, []);
+
+  // Geolocaliza usando Nominatim (OpenStreetMap)
   const handleGeoLocate = async () => {
     setGeoLoading(true);
     setError('');
@@ -69,11 +117,14 @@ const CartaAstral = () => {
     }
   };
 
-  // 🔮 Calcula la carta astral
+  // Calcula la carta astral, planetas, casas y aspectos usando corsproxy.io como proxy
   const handleSubmit = async e => {
     e.preventDefault();
     setLoading(true);
     setSvgUrl('');
+    setPlanets([]);
+    setHouses([]);
+    setAspects([]);
     setError('');
 
     if (!coords) {
@@ -99,7 +150,8 @@ const CartaAstral = () => {
     };
 
     try {
-      const res = await fetch(API_URL, {
+      // Carta natal SVG
+      const data = await fetchWithFallback(API_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -107,14 +159,56 @@ const CartaAstral = () => {
         },
         body: JSON.stringify(payload)
       });
-      const data = await res.json();
       if (data.output && data.output.endsWith('.svg')) {
         setSvgUrl(data.output);
       } else {
         setError('No se pudo generar la carta astral.');
       }
+
+      // Planetas
+      const planetsData = await fetchWithFallback(PLANETS_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': API_KEY
+        },
+        body: JSON.stringify(payload)
+      });
+      if (planetsData.output && Array.isArray(planetsData.output)) {
+        setPlanets(planetsData.output);
+      }
+
+      // Casas
+      const housesData = await fetchWithFallback(HOUSES_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': API_KEY
+        },
+        body: JSON.stringify(payload)
+      });
+      if (
+        housesData.output &&
+        housesData.output.Houses &&
+        Array.isArray(housesData.output.Houses)
+      ) {
+        setHouses(housesData.output.Houses);
+      }
+
+      // Aspectos
+      const aspectsData = await fetchWithFallback(ASPECTS_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': API_KEY
+        },
+        body: JSON.stringify(payload)
+      });
+      if (aspectsData.output && Array.isArray(aspectsData.output)) {
+        setAspects(aspectsData.output);
+      }
     } catch {
-      setError('Error al calcular la carta astral.');
+      setError('Error al calcular la carta astral. Los proxies gratuitos pueden estar saturados, intenta de nuevo más tarde.');
     } finally {
       setLoading(false);
     }
@@ -147,6 +241,77 @@ const CartaAstral = () => {
         <div style={{ marginTop: 24 }}>
           <h2>Tu carta natal</h2>
           <img src={svgUrl} alt="Carta natal" style={{ width: '100%', maxWidth: 400, background: '#fff' }} />
+        </div>
+      )}
+      {planets.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <h2>Planetas</h2>
+          <table style={{ width: '100%', fontSize: 14, background: '#222', color: '#fff', borderRadius: 8 }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: 'left' }}>Planeta</th>
+                <th>Signo</th>
+                <th>Grados</th>
+                <th>Retrógrado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {planets.map((p, i) => (
+                <tr key={i}>
+                  <td>{p.planet?.es || p.planet?.en}</td>
+                  <td>{p.zodiac_sign?.name?.es || p.zodiac_sign?.name?.en}</td>
+                  <td>{p.normDegree ? p.normDegree.toFixed(2) : ''}</td>
+                  <td>{String(p.isRetro).toLowerCase() === 'true' ? 'Sí' : 'No'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {houses.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <h2>Casas astrológicas</h2>
+          <table style={{ width: '100%', fontSize: 14, background: '#222', color: '#fff', borderRadius: 8 }}>
+            <thead>
+              <tr>
+                <th>Casa</th>
+                <th>Signo</th>
+                <th>Grados</th>
+              </tr>
+            </thead>
+            <tbody>
+              {houses.map((h, i) => (
+                <tr key={i}>
+                  <td>{h.House}</td>
+                  <td>{h.zodiac_sign?.name?.es || h.zodiac_sign?.name?.en}</td>
+                  <td>{h.normDegree ? h.normDegree.toFixed(2) : ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {aspects.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <h2>Aspectos</h2>
+          <table style={{ width: '100%', fontSize: 14, background: '#222', color: '#fff', borderRadius: 8 }}>
+            <thead>
+              <tr>
+                <th>Planeta 1</th>
+                <th>Planeta 2</th>
+                <th>Aspecto</th>
+              </tr>
+            </thead>
+            <tbody>
+              {aspects.map((a, i) => (
+                <tr key={i}>
+                  <td>{a.planet_1?.es || a.planet_1?.en}</td>
+                  <td>{a.planet_2?.es || a.planet_2?.en}</td>
+                  <td>{a.aspect?.es || a.aspect?.en}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
