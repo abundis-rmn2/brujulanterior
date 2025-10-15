@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const API_URL = 'https://json.freeastrologyapi.com/western/natal-wheel-chart';
 const PLANETS_URL = 'https://json.freeastrologyapi.com/western/planets';
@@ -62,6 +63,8 @@ const CartaAstral = () => {
   const [loading, setLoading] = useState(false);
   const [geoLoading, setGeoLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const navigate = useNavigate();
 
   const handleChange = e => setForm({ ...form, [e.target.name]: e.target.value });
 
@@ -214,6 +217,51 @@ const CartaAstral = () => {
     }
   };
 
+  // Construye el prompt para Gracia
+  const buildPromptForGracia = () => {
+    let prompt = `Mi nombre es ${form.name}.\n`;
+    prompt += `Mi carta astral:\n`;
+    if (planets.length > 0) {
+      prompt += `Planetas:\n`;
+      planets.forEach(p => {
+        prompt += `- ${p.planet?.es || p.planet?.en}: ${p.zodiac_sign?.name?.es || p.zodiac_sign?.name?.en} (${p.normDegree ? p.normDegree.toFixed(2) : ''}°)${String(p.isRetro).toLowerCase() === 'true' ? ' retrógrado' : ''}\n`;
+      });
+    }
+    if (houses.length > 0) {
+      prompt += `Casas:\n`;
+      houses.forEach(h => {
+        prompt += `- Casa ${h.House}: ${h.zodiac_sign?.name?.es || h.zodiac_sign?.name?.en} (${h.normDegree ? h.normDegree.toFixed(2) : ''}°)\n`;
+      });
+    }
+    if (aspects.length > 0) {
+      prompt += `Aspectos:\n`;
+      aspects.forEach(a => {
+        prompt += `- ${a.planet_1?.es || a.planet_1?.en} y ${a.planet_2?.es || a.planet_2?.en}: ${a.aspect?.es || a.aspect?.en}\n`;
+      });
+    }
+    return prompt;
+  };
+
+  // Envía el prompt a Gracia Chat
+  const handleSendToGracia = () => {
+    const prompt = buildPromptForGracia();
+    // Guarda el prompt en localStorage para que Gracia Chat lo lea como nuevo prompt
+    const SYSTEM_PROMPTS_KEY = 'deepseekSystemPrompts';
+    let stored = {};
+    try {
+      const storedRaw = localStorage.getItem(SYSTEM_PROMPTS_KEY);
+      stored = storedRaw ? JSON.parse(storedRaw) : { prompts: [], current: '' };
+    } catch {
+      stored = { prompts: [], current: '' };
+    }
+    // Añade el nuevo prompt y lo selecciona como actual
+    stored.prompts = [prompt, ...(Array.isArray(stored.prompts) ? stored.prompts : [])];
+    stored.current = prompt;
+    localStorage.setItem(SYSTEM_PROMPTS_KEY, JSON.stringify(stored));
+    // Navega a Gracia Chat
+    navigate('/gracia-chat');
+  };
+
   return (
     <div style={{ padding: '2em', maxWidth: 500 }}>
       <h1>Carta Astral</h1>
@@ -222,7 +270,11 @@ const CartaAstral = () => {
         <input type="date" name="date" value={form.date} onChange={handleChange} required />
         <input type="time" name="time" value={form.time} onChange={handleChange} required />
         <input type="text" name="place" placeholder="Lugar de nacimiento" value={form.place} onChange={handleChange} required />
-        <button type="button" onClick={handleGeoLocate} disabled={geoLoading}>
+        <button
+          type="button"
+          onClick={handleGeoLocate}
+          disabled={geoLoading}
+        >
           {geoLoading ? 'Buscando...' : 'Geolocalizar'}
         </button>
 
@@ -231,7 +283,13 @@ const CartaAstral = () => {
             📍 Lat: {coords.lat.toFixed(3)}, Lon: {coords.lon.toFixed(3)}, TZ: {tz}
           </div>
         )}
-        <button type="submit" disabled={loading}>
+        <button
+          type="submit"
+          disabled={
+            loading ||
+            !coords // Solo habilitado si hay coordenadas
+          }
+        >
           {loading ? 'Calculando...' : 'Obtener carta astral'}
         </button>
       </form>
@@ -241,6 +299,12 @@ const CartaAstral = () => {
         <div style={{ marginTop: 24 }}>
           <h2>Tu carta natal</h2>
           <img src={svgUrl} alt="Carta natal" style={{ width: '100%', maxWidth: 400, background: '#fff' }} />
+          <button
+            style={{ marginTop: 24, marginBottom: 24, padding: '0.5em 1.5em', fontSize: 16, background: '#4e4', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', display: 'block' }}
+            onClick={handleSendToGracia}
+          >
+            Enviar a Gracia
+          </button>
         </div>
       )}
       {planets.length > 0 && (
@@ -312,6 +376,12 @@ const CartaAstral = () => {
               ))}
             </tbody>
           </table>
+          <button
+            style={{ marginTop: 24, padding: '0.5em 1.5em', fontSize: 16, background: '#4e4', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}
+            onClick={handleSendToGracia}
+          >
+            Enviar a Gracia
+          </button>
         </div>
       )}
     </div>

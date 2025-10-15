@@ -3,10 +3,16 @@ import { Send, Save, Trash2, Plus, MessageSquare } from 'lucide-react';
 import './DeepSeekChat.css';
 
 const SYSTEM_PROMPTS_KEY = 'deepseekSystemPrompts';
+const USERS_INFO_KEY = 'deepseekUsersInfo'; // Nuevo: clave para info de usuario
 const DEFAULT_API_KEY = 'sk-9ddf3001eace4fdeb18b958fe5e10751';
 
 const initialPromptsState = {
   prompts: [],
+  current: '',
+};
+
+const initialUsersState = {
+  users: [],
   current: '',
 };
 
@@ -20,9 +26,12 @@ const DeepSeekChat = () => {
   const [error, setError] = useState('');
   const [storageError, setStorageError] = useState('');
   const chatEndRef = useRef(null);
+  const [usersState, setUsersState] = useState(initialUsersState);
+  const [activeTab, setActiveTab] = useState('prompt'); // 'prompt' o 'users'
 
-  // Cargar prompts y prompt activo desde localStorage al montar
+  // Cargar prompts y usuarios desde localStorage al montar
   useEffect(() => {
+    // Prompts
     try {
       const storedPromptsRaw = localStorage.getItem(SYSTEM_PROMPTS_KEY);
       console.log('[DeepSeekChat] Leyendo prompts de localStorage:', storedPromptsRaw);
@@ -37,10 +46,21 @@ const DeepSeekChat = () => {
       setStorageError('No se pudo leer los prompts del almacenamiento local.');
       console.error('[DeepSeekChat] Error al leer prompts de localStorage:', e);
     }
+    // Usuarios
+    try {
+      const storedUsersRaw = localStorage.getItem(USERS_INFO_KEY);
+      const storedUsers = storedUsersRaw ? JSON.parse(storedUsersRaw) : initialUsersState;
+      setUsersState({
+        users: Array.isArray(storedUsers.users) ? storedUsers.users : [],
+        current: typeof storedUsers.current === 'string' ? storedUsers.current : '',
+      });
+    } catch {
+      setUsersState(initialUsersState);
+    }
     setApiKey(DEFAULT_API_KEY);
   }, []);
 
-  // Guardar prompts y prompt activo en localStorage cuando cambian
+  // Guardar prompts en localStorage cuando cambian
   useEffect(() => {
     try {
       localStorage.setItem(SYSTEM_PROMPTS_KEY, JSON.stringify(promptsState));
@@ -51,12 +71,43 @@ const DeepSeekChat = () => {
     }
   }, [promptsState]);
 
+  // Guardar usuarios en localStorage cuando cambian
+  useEffect(() => {
+    try {
+      localStorage.setItem(USERS_INFO_KEY, JSON.stringify(usersState));
+    } catch {}
+  }, [usersState]);
+
   // Auto-scroll chat
   useEffect(() => {
     if (chatEndRef.current) {
       chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, isLoading]);
+
+  // Añadir usuario desde CartaAstral.jsx (si existe en localStorage)
+  useEffect(() => {
+    // Busca si hay un usuario nuevo en localStorage (por ejemplo, de CartaAstral.jsx)
+    const lastUserRaw = localStorage.getItem('cartaAstralUserInfo');
+    if (lastUserRaw) {
+      try {
+        const user = JSON.parse(lastUserRaw);
+        if (user && user.info) {
+          setUsersState(prev => {
+            // Evita duplicados exactos
+            const exists = prev.users.some(u => u.info === user.info);
+            if (exists) return prev;
+            return {
+              users: [user, ...prev.users],
+              current: user.info,
+            };
+          });
+          // Limpia la clave temporal
+          localStorage.removeItem('cartaAstralUserInfo');
+        }
+      } catch {}
+    }
+  }, []);
 
   // Guardar nuevo prompt
   const saveSystemPrompt = () => {
@@ -83,6 +134,20 @@ const DeepSeekChat = () => {
   // Seleccionar prompt
   const selectSystemPrompt = (prompt) => {
     setPromptsState(prev => ({ ...prev, current: prompt }));
+  };
+
+  // Seleccionar usuario
+  const selectUserInfo = (info) => {
+    setUsersState(prev => ({ ...prev, current: info }));
+  };
+
+  // Eliminar usuario
+  const deleteUserInfo = (info) => {
+    setUsersState(prev => {
+      const updatedUsers = prev.users.filter(u => u.info !== info);
+      const updatedCurrent = prev.current === info ? '' : prev.current;
+      return { users: updatedUsers, current: updatedCurrent };
+    });
   };
 
   // Limpiar chat
@@ -138,80 +203,161 @@ const DeepSeekChat = () => {
     }
   };
 
+  // Cambiar entre tabs
+  const handleTabChange = (tab) => setActiveTab(tab);
+
   return (
     <div className="deepseek-chat-container">
       <aside className="sidebar">
-        <h2>Prompts del sistema</h2>
-        <textarea
-          className="prompt-input"
-          placeholder="Nuevo system prompt..."
-          value={newSystemPrompt}
-          onChange={e => setNewSystemPrompt(e.target.value)}
-          rows={3}
-        />
-        <button
-          className="btn save-btn"
-          onClick={saveSystemPrompt}
-          disabled={!newSystemPrompt.trim()}
-          title="Guardar prompt"
-        >
-          <Save size={16} /> Guardar
-        </button>
-        <div className="prompts-list">
-          {promptsState.prompts.length === 0 && (
-            <div className="empty-prompts">No hay prompts guardados</div>
-          )}
-          {promptsState.prompts.map(prompt => (
-            <div
-              key={prompt}
-              className={`prompt-item${promptsState.current === prompt ? ' active' : ''}`}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+          <button
+            className={`btn${activeTab === 'prompt' ? ' active' : ''}`}
+            onClick={() => handleTabChange('prompt')}
+          >
+            Prompts
+          </button>
+          <button
+            className={`btn${activeTab === 'users' ? ' active' : ''}`}
+            onClick={() => handleTabChange('users')}
+          >
+            Usuarios
+          </button>
+        </div>
+        {activeTab === 'prompt' && (
+          <>
+            <h2>Prompts del sistema</h2>
+            <textarea
+              className="prompt-input"
+              placeholder="Nuevo system prompt..."
+              value={newSystemPrompt}
+              onChange={e => setNewSystemPrompt(e.target.value)}
+              rows={3}
+            />
+            <button
+              className="btn save-btn"
+              onClick={saveSystemPrompt}
+              disabled={!newSystemPrompt.trim()}
+              title="Guardar prompt"
             >
-              <button
-                className="btn use-btn"
-                onClick={() => selectSystemPrompt(prompt)}
-                title="Usar este prompt"
-              >
-                <MessageSquare size={14} />
-              </button>
-              <span
-                className="prompt-text"
-                title={prompt}
-                onClick={() => selectSystemPrompt(prompt)}
-              >
-                {prompt.length > 40 ? prompt.slice(0, 40) + '…' : prompt}
-              </span>
-              <button
-                className="btn delete-btn"
-                onClick={() => deleteSystemPrompt(prompt)}
-                title="Eliminar"
-              >
-                <Trash2 size={14} />
-              </button>
+              <Save size={16} /> Guardar
+            </button>
+            <div className="prompts-list">
+              {promptsState.prompts.length === 0 && (
+                <div className="empty-prompts">No hay prompts guardados</div>
+              )}
+              {promptsState.prompts.map(prompt => (
+                <div
+                  key={prompt}
+                  className={`prompt-item${promptsState.current === prompt ? ' active' : ''}`}
+                >
+                  <button
+                    className="btn use-btn"
+                    onClick={() => selectSystemPrompt(prompt)}
+                    title="Usar este prompt"
+                  >
+                    <MessageSquare size={14} />
+                  </button>
+                  <span
+                    className="prompt-text"
+                    title={prompt}
+                    onClick={() => selectSystemPrompt(prompt)}
+                  >
+                    {prompt.length > 40 ? prompt.slice(0, 40) + '…' : prompt}
+                  </span>
+                  <button
+                    className="btn delete-btn"
+                    onClick={() => deleteSystemPrompt(prompt)}
+                    title="Eliminar"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-        <div className="current-prompt">
-          <strong>Prompt activo:</strong>
-          <div className="current-prompt-text" style={{ display: 'flex', alignItems: 'center', gap: '0.5em' }}>
-            {promptsState.current
-              ? (
-                  <>
-                    {promptsState.current.length > 100
-                      ? promptsState.current.slice(0, 100) + '…'
-                      : promptsState.current}
-                    <button
-                      className="btn"
-                      style={{ marginLeft: 8 }}
-                      title="Desactivar prompt activo"
-                      onClick={() => setPromptsState(prev => ({ ...prev, current: '' }))}
-                    >
-                      Desactivar
-                    </button>
-                  </>
-                )
-              : <em>Ninguno</em>}
-          </div>
-        </div>
+            <div className="current-prompt">
+              <strong>Prompt activo:</strong>
+              <div className="current-prompt-text" style={{ display: 'flex', alignItems: 'center', gap: '0.5em' }}>
+                {promptsState.current
+                  ? (
+                      <>
+                        {promptsState.current.length > 100
+                          ? promptsState.current.slice(0, 100) + '…'
+                          : promptsState.current}
+                        <button
+                          className="btn"
+                          style={{ marginLeft: 8 }}
+                          title="Desactivar prompt activo"
+                          onClick={() => setPromptsState(prev => ({ ...prev, current: '' }))}
+                        >
+                          Desactivar
+                        </button>
+                      </>
+                    )
+                  : <em>Ninguno</em>}
+              </div>
+            </div>
+          </>
+        )}
+        {activeTab === 'users' && (
+          <>
+            <h2>Usuarios</h2>
+            <div className="prompts-list">
+              {usersState.users.length === 0 && (
+                <div className="empty-prompts">No hay información de usuario</div>
+              )}
+              {usersState.users.map(user => (
+                <div
+                  key={user.info}
+                  className={`prompt-item${usersState.current === user.info ? ' active' : ''}`}
+                >
+                  <button
+                    className="btn use-btn"
+                    onClick={() => selectUserInfo(user.info)}
+                    title="Usar este usuario"
+                  >
+                    <MessageSquare size={14} />
+                  </button>
+                  <span
+                    className="prompt-text"
+                    title={user.info}
+                    onClick={() => selectUserInfo(user.info)}
+                  >
+                    {user.info.length > 40 ? user.info.slice(0, 40) + '…' : user.info}
+                  </span>
+                  <button
+                    className="btn delete-btn"
+                    onClick={() => deleteUserInfo(user.info)}
+                    title="Eliminar"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="current-prompt">
+              <strong>Usuario activo:</strong>
+              <div className="current-prompt-text" style={{ display: 'flex', alignItems: 'center', gap: '0.5em' }}>
+                {usersState.current
+                  ? (
+                      <>
+                        {usersState.current.length > 100
+                          ? usersState.current.slice(0, 100) + '…'
+                          : usersState.current}
+                        <button
+                          className="btn"
+                          style={{ marginLeft: 8 }}
+                          title="Desactivar usuario activo"
+                          onClick={() => setUsersState(prev => ({ ...prev, current: '' }))}
+                        >
+                          Desactivar
+                        </button>
+                      </>
+                    )
+                  : <em>Ninguno</em>}
+              </div>
+            </div>
+          </>
+        )}
         <div className="api-key-section">
           <label htmlFor="api-key">API Key DeepSeek</label>
           <input
