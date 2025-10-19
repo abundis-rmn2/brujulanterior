@@ -22,6 +22,9 @@ const defaultConfig = {
   orb_values: { Conjunction: 3, Opposition: 5, Square: 5, Trine: 5, Sextile: 5 }
 };
 
+const PROFILE_KEY = 'cartaAstralProfile';
+const PROFILE_LIST_KEY = 'cartaAstralProfiles';
+
 const CartaAstral = () => {
   const [form, setForm] = useState({
     name: '',
@@ -39,8 +42,20 @@ const CartaAstral = () => {
   const [loading, setLoading] = useState(false);
   const [geoLoading, setGeoLoading] = useState(false);
   const [error, setError] = useState('');
+  const [loadingMsg, setLoadingMsg] = useState('');
+  const [profiles, setProfiles] = useState([]);
 
   const handleChange = e => setForm({ ...form, [e.target.name]: e.target.value });
+
+  // Cargar perfiles guardados al montar
+  React.useEffect(() => {
+    try {
+      const stored = localStorage.getItem(PROFILE_LIST_KEY);
+      if (stored) {
+        setProfiles(JSON.parse(stored));
+      }
+    } catch {}
+  }, []);
 
   // Geolocaliza usando Nominatim (OpenStreetMap)
   const handleGeoLocate = async () => {
@@ -78,6 +93,7 @@ const CartaAstral = () => {
   const handleSubmit = async e => {
     e.preventDefault();
     setLoading(true);
+    setLoadingMsg('Generando carta natal...');
     setSvgUrl('');
     setError('');
     setAspects([]);
@@ -87,6 +103,7 @@ const CartaAstral = () => {
     if (!coords) {
       setError('Primero localiza el lugar de nacimiento.');
       setLoading(false);
+      setLoadingMsg('');
       return;
     }
 
@@ -108,11 +125,13 @@ const CartaAstral = () => {
 
     try {
       // Carta natal SVG
+      setLoadingMsg('Generando carta natal...');
       const res = await fetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
+      await new Promise(res => setTimeout(res, 350));
       const data = await res.json();
       if (data.output && data.output.endsWith('.svg')) {
         setSvgUrl(data.output);
@@ -121,22 +140,26 @@ const CartaAstral = () => {
       }
 
       // Aspectos
+      setLoadingMsg('Calculando aspectos...');
       const aspectsRes = await fetch(ASPECTS_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
+      await new Promise(res => setTimeout(res, 350));
       const aspectsData = await aspectsRes.json();
       if (aspectsData.output && Array.isArray(aspectsData.output)) {
         setAspects(aspectsData.output);
       }
 
       // Casas
+      setLoadingMsg('Calculando casas...');
       const housesRes = await fetch(HOUSES_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
+      await new Promise(res => setTimeout(res, 350));
       const housesData = await housesRes.json();
       if (
         housesData.output &&
@@ -147,25 +170,105 @@ const CartaAstral = () => {
       }
 
       // Planetas
+      setLoadingMsg('Calculando posiciones planetarias...');
       const planetsRes = await fetch(PLANETS_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
+      await new Promise(res => setTimeout(res, 350));
       const planetsData = await planetsRes.json();
       if (planetsData.output && Array.isArray(planetsData.output)) {
         setPlanets(planetsData.output);
       }
+      setLoadingMsg('');
     } catch {
       setError('Error al calcular la carta astral, aspectos, casas o planetas.');
+      setLoadingMsg('');
     } finally {
       setLoading(false);
+      setLoadingMsg('');
     }
+  };
+
+  // Guardar perfil completo en localStorage (varios perfiles)
+  const handleSaveProfile = () => {
+    const profile = {
+      ...form,
+      coords,
+      tz,
+      svgUrl,
+      planets,
+      aspects,
+      houses,
+      savedAt: new Date().toISOString()
+    };
+    let newProfiles = [];
+    try {
+      const stored = localStorage.getItem(PROFILE_LIST_KEY);
+      newProfiles = stored ? JSON.parse(stored) : [];
+    } catch {}
+    // Si ya existe un perfil con mismo nombre+fecha+lugar, reemplaza
+    const idx = newProfiles.findIndex(
+      p => p.name === profile.name && p.date === profile.date && p.place === profile.place
+    );
+    if (idx >= 0) {
+      newProfiles[idx] = profile;
+    } else {
+      newProfiles.push(profile);
+    }
+    localStorage.setItem(PROFILE_LIST_KEY, JSON.stringify(newProfiles));
+    setProfiles(newProfiles);
+    alert('Perfil guardado en este navegador.');
+  };
+
+  // Cargar perfil al hacer click
+  const handleLoadProfile = (profile) => {
+    setForm({
+      name: profile.name,
+      date: profile.date,
+      time: profile.time,
+      place: profile.place
+    });
+    setCoords(profile.coords || null);
+    setTz(profile.tz || -6);
+    setSvgUrl(profile.svgUrl || '');
+    setPlanets(profile.planets || []);
+    setAspects(profile.aspects || []);
+    setHouses(profile.houses || []);
+    setError('');
   };
 
   return (
     <div style={{ padding: '2em', maxWidth: 500 }}>
       <h1>Carta Astral</h1>
+      {/* Lista de perfiles guardados */}
+      {profiles.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <h3>Perfiles guardados</h3>
+          <ul style={{ paddingLeft: 0, listStyle: 'none' }}>
+            {profiles.map((p, i) => (
+              <li key={i} style={{ marginBottom: 8 }}>
+                <button
+                  style={{
+                    background: '#222',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: 4,
+                    padding: '0.3em 1em',
+                    cursor: 'pointer',
+                    marginRight: 8
+                  }}
+                  onClick={() => handleLoadProfile(p)}
+                  type="button"
+                >
+                  {p.name} - {p.date} - {p.place}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         <input type="text" name="name" placeholder="Nombre" value={form.name} onChange={handleChange} required />
         <input type="date" name="date" value={form.date} onChange={handleChange} required />
@@ -190,11 +293,23 @@ const CartaAstral = () => {
           {loading ? 'Calculando...' : 'Obtener carta astral'}
         </button>
       </form>
+      {loading && (
+        <div style={{ margin: '1em 0', color: '#888', fontWeight: 'bold' }}>
+          {loadingMsg || 'Cargando...'}
+        </div>
+      )}
       {error && <p style={{ color: 'red' }}>{error}</p>}
       {svgUrl && (
         <div style={{ marginTop: 24 }}>
           <h2>Tu carta natal</h2>
           <img src={svgUrl} alt="Carta natal" style={{ width: '100%', maxWidth: 400, background: '#fff' }} />
+          <button
+            style={{ marginTop: 16, padding: '0.5em 1.5em', fontSize: 16, background: '#4e4', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}
+            onClick={handleSaveProfile}
+            type="button"
+          >
+            Guardar perfil
+          </button>
         </div>
       )}
       {planets.length > 0 && (

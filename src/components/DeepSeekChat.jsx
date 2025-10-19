@@ -5,6 +5,7 @@ import './DeepSeekChat.css';
 const SYSTEM_PROMPTS_KEY = 'deepseekSystemPrompts';
 const USERS_INFO_KEY = 'deepseekUsersInfo'; // Nuevo: clave para info de usuario
 const DEFAULT_API_KEY = 'sk-9ddf3001eace4fdeb18b958fe5e10751';
+const PROFILE_LIST_KEY = 'cartaAstralProfiles';
 
 const initialPromptsState = {
   prompts: [],
@@ -46,13 +47,35 @@ const DeepSeekChat = () => {
       setStorageError('No se pudo leer los prompts del almacenamiento local.');
       console.error('[DeepSeekChat] Error al leer prompts de localStorage:', e);
     }
-    // Usuarios
+    // Usuarios: cargar perfiles de cartaAstralProfiles
     try {
-      const storedUsersRaw = localStorage.getItem(USERS_INFO_KEY);
-      const storedUsers = storedUsersRaw ? JSON.parse(storedUsersRaw) : initialUsersState;
+      const storedProfilesRaw = localStorage.getItem(PROFILE_LIST_KEY);
+      let usersArr = [];
+      if (storedProfilesRaw) {
+        const profiles = JSON.parse(storedProfilesRaw);
+        // Convierte cada perfil a objeto { info: texto }
+        usersArr = profiles.map(p => ({
+          info: `${p.name} - ${p.date} - ${p.place}\n\n${p.svgUrl ? 'Carta: ' + p.svgUrl + '\n' : ''}` +
+            (p.planets && p.planets.length
+              ? 'Planetas:\n' + p.planets.map(pl =>
+                  `- ${pl.planet?.es || pl.planet?.en}: ${pl.zodiac_sign?.name?.es || pl.zodiac_sign?.name?.en} (${pl.normDegree ? pl.normDegree.toFixed(2) : ''}°)${String(pl.isRetro).toLowerCase() === 'true' ? ' retrógrado' : ''}`
+                ).join('\n') + '\n'
+              : '') +
+            (p.houses && p.houses.length
+              ? 'Casas:\n' + p.houses.map(h =>
+                  `- Casa ${h.House}: ${h.zodiac_sign?.name?.es || h.zodiac_sign?.name?.en} (${h.normDegree ? h.normDegree.toFixed(2) : ''}°)`
+                ).join('\n') + '\n'
+              : '') +
+            (p.aspects && p.aspects.length
+              ? 'Aspectos:\n' + p.aspects.map(a =>
+                  `- ${a.planet_1?.es || a.planet_1?.en} y ${a.planet_2?.es || a.planet_2?.en}: ${a.aspect?.es || a.aspect?.en}`
+                ).join('\n')
+              : '')
+        }));
+      }
       setUsersState({
-        users: Array.isArray(storedUsers.users) ? storedUsers.users : [],
-        current: typeof storedUsers.current === 'string' ? storedUsers.current : '',
+        users: usersArr,
+        current: usersArr.length > 0 ? usersArr[0].info : '',
       });
     } catch {
       setUsersState(initialUsersState);
@@ -148,6 +171,15 @@ const DeepSeekChat = () => {
       const updatedCurrent = prev.current === info ? '' : prev.current;
       return { users: updatedUsers, current: updatedCurrent };
     });
+  };
+
+  // Añadir contenido de usuario al chat como mensaje de usuario
+  const addUserInfoToChat = (user) => {
+    if (!user || !user.info) return;
+    setMessages(prev => [
+      ...prev,
+      { role: 'user', content: user.info }
+    ]);
   };
 
   // Limpiar chat
@@ -321,9 +353,18 @@ const DeepSeekChat = () => {
                     className="prompt-text"
                     title={user.info}
                     onClick={() => selectUserInfo(user.info)}
+                    style={{ cursor: 'pointer', textDecoration: 'underline' }}
                   >
                     {user.info.length > 40 ? user.info.slice(0, 40) + '…' : user.info}
                   </span>
+                  <button
+                    className="btn"
+                    style={{ marginLeft: 6 }}
+                    title="Añadir al chat"
+                    onClick={() => addUserInfoToChat(user)}
+                  >
+                    Añadir al chat
+                  </button>
                   <button
                     className="btn delete-btn"
                     onClick={() => deleteUserInfo(user.info)}
