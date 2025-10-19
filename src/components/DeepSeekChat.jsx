@@ -182,6 +182,12 @@ const DeepSeekChat = () => {
     ]);
   };
 
+  // Añadir contenido de usuario a la caja de texto del chat
+  const addUserInfoToInput = (user) => {
+    if (!user || !user.info) return;
+    setInputMessage(prev => (prev ? prev + '\n' : '') + user.info);
+  };
+
   // Limpiar chat
   const clearChat = () => {
     setMessages([]);
@@ -352,7 +358,7 @@ const DeepSeekChat = () => {
                   <span
                     className="prompt-text"
                     title={user.info}
-                    onClick={() => selectUserInfo(user.info)}
+                    onClick={() => addUserInfoToInput(user)}
                     style={{ cursor: 'pointer', textDecoration: 'underline' }}
                   >
                     {user.info.length > 40 ? user.info.slice(0, 40) + '…' : user.info}
@@ -361,7 +367,7 @@ const DeepSeekChat = () => {
                     className="btn"
                     style={{ marginLeft: 6 }}
                     title="Añadir al chat"
-                    onClick={() => addUserInfoToChat(user)}
+                    onClick={() => addUserInfoToInput(user)}
                   >
                     Añadir al chat
                   </button>
